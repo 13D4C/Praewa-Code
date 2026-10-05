@@ -1,0 +1,864 @@
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+@theme {
+  --font-sans:
+    'DM Sans Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --color-accent: #f5d547;
+  --color-muted: #717680;
+  --color-line: #26282d;
+  --color-surface: #111214;
+  --color-canvas: #0c0d0f;
+  --color-foreground: #d9dbe1;
+}
+
+@layer base {
+  :root {
+    @apply font-sans text-foreground bg-canvas;
+    font-synthesis: none;
+    --yellow: #f5d547;
+    --muted: #717680;
+    --line: #26282d;
+    --surface: #111214;
+  }
+  * {
+    @apply box-border;
+  }
+  body {
+    @apply m-0 overflow-hidden;
+  }
+  button,
+  input {
+    font: inherit;
+  }
+  button {
+    @apply cursor-pointer border-0 text-inherit bg-transparent;
+  }
+  button:disabled {
+    @apply opacity-[0.4] cursor-default;
+  }
+  button,
+  input {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:focus-visible,
+  input:focus-visible {
+    outline: 2px solid #f5d547a0;
+    outline-offset: 3px;
+  }
+  button {
+    transition:
+      background 0.15s,
+      color 0.15s,
+      border-color 0.15s;
+  }
+  svg {
+    @apply shrink-0;
+  }
+  kbd {
+    @apply [font-family:inherit] text-[10px] font-medium whitespace-nowrap;
+  }
+  select {
+    @apply text-[#aab3c2] border border-[#30343e] rounded-[4px] bg-[#191b20] text-[10px] p-[4px];
+  }
+}
+.accent {
+  @apply text-accent;
+}
+.muted {
+  @apply text-[#69717b];
+}
+.folder-icon {
+  @apply text-[#b0a578];
+}
+.workspace-crumb {
+  @apply flex items-center gap-[9px] text-[#7e838e] text-[11px] min-w-0;
+}
+.workspace-crumb > span:not(.topbar-divider) {
+  @apply max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap;
+}
+.topbar-divider {
+  @apply h-[19px] w-[1px] bg-[#303136] mr-[3px];
+}
+.command-trigger kbd {
+  @apply ml-auto border border-[#34363c] py-[1px] px-[5px] rounded-[3px] text-[9px];
+}
+.command-trigger:hover {
+  @apply border-[#525042] text-[#c5c6cc];
+}
+.topbar-right {
+  @apply flex items-center gap-[14px] ml-auto;
+}
+.version {
+  @apply font-mono text-[10px] text-[#6b707b];
+}
+.agent-toggle.open {
+  @apply text-accent bg-[#f5d5470b] border-[#665b33];
+}
+.agent-toggle:hover {
+  @apply text-accent border-[#8a7838];
+}
+.agent-resizer:hover,
+.agent-resizer:focus-visible {
+  @apply bg-[#f5d54780];
+}
+.command-trigger > span {
+  @apply overflow-hidden whitespace-nowrap text-ellipsis;
+}
+@media (max-width: 1050px) {
+  .agent-toggle > span {
+    @apply hidden;
+  }
+}
+@media (max-width: 999px) {
+  .agent-dock {
+    @apply absolute right-0 top-0 bottom-0 z-[10] max-w-[calc(100%_-_55px)];
+    box-shadow: -10px 0 30px #0005;
+  }
+  .agent-resizer {
+    @apply hidden;
+  }
+}
+@media (max-width: 760px) {
+  .topbar .local-badge {
+    @apply hidden;
+  }
+}
+.activity-button:hover {
+  @apply text-[#c1c5cd];
+}
+.activity-button.selected {
+  @apply text-accent;
+  background: linear-gradient(90deg, #f5d5470e, transparent);
+}
+.activity-button.selected:before {
+  content: '';
+  @apply absolute left-0 h-[24px] w-[2px] bg-accent;
+}
+.selected-secondary {
+  @apply text-[#adb2be];
+}
+.activity-spacer {
+  @apply flex-1;
+}
+.avatar {
+  @apply w-[27px] h-[27px] mt-[8px] mr-0 mb-[15px] ml-0 flex items-center justify-center border border-[#454331] bg-[#28271c] rounded-[8px] text-[#d8c678] text-[11px] font-semibold;
+}
+.sidebar-actions,
+.output-actions {
+  @apply flex gap-[4px] items-center;
+}
+.icon-button {
+  @apply inline-flex items-center justify-center p-[4px] text-[#7f8590] rounded-[4px];
+}
+.icon-button:hover:not(:disabled) {
+  @apply text-[#dedfe5] bg-[#ffffff09];
+}
+.project-heading {
+  @apply flex gap-[7px] items-center py-[9px] px-[11px] text-[#b9bcc4] bg-[#1b1c20] text-[10px] font-semibold uppercase tracking-[0.6px];
+}
+.project-heading > span {
+  @apply flex-1 overflow-hidden whitespace-nowrap text-ellipsis;
+}
+.file-tree {
+  @apply overflow-auto py-[7px] px-0 flex-1;
+}
+.tree-entry {
+  @apply flex gap-[7px] items-center w-full h-[29px] pr-[10px] text-[#a0a5af] text-[11px] text-left;
+}
+.tree-entry > span:last-child {
+  @apply whitespace-nowrap overflow-hidden text-ellipsis;
+}
+.tree-entry:hover {
+  @apply bg-[#ffffff04] text-[#d1d3da];
+}
+.tree-entry.active {
+  @apply text-[#ebdfa8] bg-[#f5d5470c];
+  box-shadow: inset 2px 0 #d5b945;
+}
+.tree-spacer {
+  @apply w-[13px] shrink-0;
+}
+.empty-folder {
+  @apply text-[#5e6570] text-[10px] pt-[5px] pb-[5px];
+}
+.empty-tree {
+  @apply text-[#6d7380] text-[11px] py-0 px-[18px] leading-[1.8];
+}
+.folder-outline {
+  @apply inline-flex items-center justify-center text-[#626454] w-[54px] h-[54px] rounded-[12px] border border-[#33342b] bg-[#1c1e19] mb-[10px];
+}
+.no-workspace h3 {
+  @apply text-[12px] font-medium text-[#b4b7c0] my-[8px] mx-0;
+}
+.no-workspace p {
+  @apply text-[11px] text-[#717782] leading-[1.8] m-0;
+}
+.sidebar-open:hover {
+  @apply bg-[#f5d5470f] border-[#8c7b38];
+}
+.section-label span {
+  @apply text-[9px] text-[#8e949e] border border-[#35373e] rounded-[3px] py-0 px-[4px];
+}
+.open-editor-entry > span:nth-child(2) {
+  @apply flex-1 overflow-hidden text-ellipsis whitespace-nowrap;
+}
+.open-editor-entry.current {
+  @apply text-[#c8cbd3] bg-[#ffffff04];
+}
+.sidebar-bottom {
+  @apply mt-auto py-[19px] px-[17px] border-t border-t-[#222429];
+}
+.tiny-label {
+  @apply text-[8px] tracking-[1.5px] text-[#585f6a];
+}
+.sidebar-bottom > div {
+  @apply flex gap-[8px] items-center mt-[10px] text-[10px] text-[#767d89];
+}
+.mini-mark {
+  @apply text-[#b3a159] flex;
+}
+.tabs {
+  @apply flex min-w-0 overflow-x-auto;
+  scrollbar-width: none;
+  @apply flex-1;
+}
+.tab-group.active {
+  @apply bg-surface border-t-accent text-[#d3d5db];
+}
+.file-tab.active {
+  @apply bg-surface border-t-2 border-t-accent border-r border-r-line min-w-[136px];
+}
+.tab-close:hover {
+  @apply text-[#d8dbe1];
+}
+.action-divider {
+  @apply w-[1px] h-[17px] bg-[#303138];
+}
+.compile-button kbd {
+  @apply ml-[8px] text-[#77672a] text-[9px];
+}
+.compile-button:hover:not(:disabled) {
+  @apply bg-[#ffe16b];
+}
+.compile-button:disabled {
+  @apply bg-[#24241c] text-[#8a825a] opacity-[1] border border-[#363329];
+}
+.compile-button:disabled kbd {
+  @apply text-[#625e47];
+}
+.compile-button.stop {
+  @apply bg-[#dc947e];
+}
+.document-pane.hidden {
+  @apply hidden;
+}
+.breadcrumbs > span:last-of-type:not(.unsaved-tag) {
+  @apply text-[#a8afbb];
+}
+.welcome {
+  @apply h-full overflow-auto relative pt-[45px] pr-[8%] pb-[44px] pl-[10%];
+  background:
+    radial-gradient(ellipse at 89% 55%, #f5d54704 0, transparent 55%), #111214;
+}
+.welcome-eyebrow > span {
+  @apply w-[5px] h-[5px] bg-[#c8af4e] rounded-[50%];
+}
+.welcome-symbol {
+  @apply relative w-[77px] h-[77px] flex items-center justify-center text-accent mt-[32px] bg-[#f5d54704];
+  transform: rotate(-3deg);
+}
+.symbol-corner {
+  @apply absolute h-[12px] w-[12px] border-[#f5d5476b] border-solid;
+}
+.top-left {
+  @apply top-0 left-0;
+  border-width: 1px 0 0 1px;
+}
+.top-right {
+  @apply top-0 right-0;
+  border-width: 1px 1px 0 0;
+}
+.bottom-left {
+  @apply bottom-0 left-0;
+  border-width: 0 0 1px 1px;
+}
+.bottom-right {
+  @apply bottom-0 right-0;
+  border-width: 0 1px 1px 0;
+}
+.welcome h1 {
+  @apply text-[#eceef2] text-[clamp(36px,_3.7vw,_58px)] font-medium leading-[1.13] tracking-[-2.4px] mt-[23px] mr-0 mb-[18px] ml-0;
+}
+.welcome h1 span {
+  @apply text-accent;
+}
+.primary-button,
+.secondary-button,
+.danger-button {
+  @apply inline-flex items-center justify-center gap-[9px] text-[11px] font-semibold rounded-[5px] py-[11px] px-[15px] min-h-[38px];
+}
+.primary-button {
+  @apply text-[#292515] bg-accent border border-accent;
+}
+.primary-button:hover:not(:disabled) {
+  @apply bg-[#ffe174] border-[#ffe174];
+}
+.welcome-actions .primary-button {
+  @apply gap-[10px] pl-[17px];
+}
+.welcome-actions .primary-button svg:last-child {
+  @apply ml-[14px];
+}
+.secondary-button {
+  @apply text-[#a3a9b4] bg-[#18191d] border border-[#33353d];
+}
+.secondary-button:hover:not(:disabled) {
+  @apply border-[#66624c] text-[#dedfe5];
+}
+.danger-button:hover {
+  @apply bg-[#ed9b8120];
+}
+.starter-link:hover {
+  @apply text-[#d6c681];
+}
+.starter-link svg:first-child {
+  @apply text-[#93885d];
+}
+.welcome-rule {
+  @apply h-[1px] max-w-[470px];
+  background: linear-gradient(90deg, #37362c, #27282c 60%, transparent);
+  @apply mt-[30px] mr-0 mb-[20px] ml-0;
+}
+.quick-shortcuts > div {
+  @apply flex flex-col gap-[8px] items-start;
+}
+.quick-shortcuts kbd {
+  @apply text-[#a5a58d] border border-[#35362e] py-[3px] px-[7px] rounded-[3px] bg-[#1b1c18] font-mono text-[9px];
+}
+.quick-shortcuts span {
+  @apply text-[9px] text-[#666e7c];
+}
+.welcome-stamp {
+  @apply flex gap-[16px] text-[7px] text-[#474c56] tracking-[1.6px] mt-[40px] relative z-[1];
+}
+.welcome-stamp > span:last-child {
+  @apply text-[#6a6347];
+}
+.welcome-orbit {
+  @apply w-[380px] h-[380px] absolute right-[-220px] top-[21%] border border-[#f5d5470c];
+  transform: rotate(45deg);
+  @apply pointer-events-none;
+}
+.welcome-orbit:before,
+.welcome-orbit:after {
+  content: '';
+  @apply absolute border border-[#f5d54707] inset-[-45px];
+}
+.welcome-orbit:after {
+  @apply inset-[45px];
+}
+.output-title {
+  @apply flex items-center gap-[9px] text-[#9198a4] text-[9px] tracking-[1px] font-[550];
+}
+.output-title > svg {
+  @apply text-[#b9a759];
+}
+.output-ready {
+  @apply text-[9px] tracking-[0] text-[#6e756f] bg-[#1e231d] border border-[#30352d] rounded-[4px] py-[2px] px-[6px] ml-[6px];
+}
+.build-indicator {
+  @apply inline-flex gap-[4px] items-center tracking-[0] ml-[5px] py-[2px] px-[6px] text-[9px] rounded-[4px] text-[#949aa7] bg-[#262930];
+}
+.build-indicator.success {
+  @apply text-[#abd2a0] bg-[#263025];
+}
+.build-indicator.failed {
+  @apply text-[#e3a08a] bg-[#342622];
+}
+.build-indicator.running {
+  @apply text-[#d5bf6a] bg-[#302d20];
+}
+.build-duration {
+  @apply text-[#787e88] font-mono text-[9px] mr-[9px];
+}
+.output-hint {
+  @apply block mt-[8px] text-[10px] text-[#454e5d];
+}
+.output-hint kbd {
+  @apply text-[#707583] text-[9px];
+}
+.status-left .status-dot {
+  @apply w-[4px] h-[4px] bg-[#aba569];
+}
+.status-right button {
+  @apply flex py-[1px] px-0 text-[9px];
+}
+.status-right button:hover {
+  @apply text-accent;
+}
+.status-separator {
+  @apply text-[#44463c];
+}
+.toast {
+  @apply fixed bottom-[46px] right-[20px] flex items-center gap-[12px] py-[14px] px-[15px] border border-[#665b31] rounded-[7px] bg-[#22231f] text-[12px] max-w-[min(480px,_90vw)] leading-[1.6];
+  box-shadow: 0 8px 30px #0006;
+  @apply z-[20];
+}
+.toast > svg {
+  @apply text-[#d7c16c];
+}
+.toast > span {
+  @apply flex-1;
+}
+.modal::backdrop {
+  @apply bg-[#0008];
+  backdrop-filter: blur(3px);
+}
+.modal {
+  @apply text-foreground;
+  margin: min(18vh, 150px) auto 0;
+  @apply w-[460px] max-w-full bg-[#18191d] border border-[#484432] rounded-[10px] p-[24px];
+  box-shadow: 0 24px 80px #0009;
+}
+.modal-heading h2 {
+  @apply m-0 text-[17px] font-[550] tracking-[-0.3px];
+}
+.input-label {
+  @apply text-[9px] text-[#848b97] font-medium tracking-[1.3px] block mb-[9px];
+}
+.form-error {
+  @apply text-[11px] text-[#e2a08c] leading-[1.6] mt-[10px] mr-0 mb-0 ml-0;
+}
+.setting-row small {
+  @apply block text-[#767e8c] text-[10px] mt-[5px];
+}
+.stepper > span {
+  @apply text-[#c3b475] text-[11px] font-mono;
+}
+.toggle span {
+  @apply h-[13px] w-[13px] rounded-[50%] bg-[#9a9fa9];
+  transition: transform 0.15s;
+}
+.toggle.enabled {
+  @apply bg-[#bba03a];
+}
+.toggle.enabled span {
+  @apply bg-[#fbebbc];
+  transform: translateX(15px);
+}
+.settings-note {
+  @apply flex items-start gap-[8px] bg-[#f5d54705] border border-[#393528] p-[12px] rounded-[5px] mt-[14px] text-[10px] leading-[1.7] text-[#9b9480];
+}
+.command-modal {
+  @apply p-0 w-[510px] overflow-hidden;
+}
+.palette-input input {
+  @apply border-0 bg-transparent flex-1 min-w-0 text-[#e0e2e8] text-[13px];
+  outline: none;
+}
+.palette-input input::placeholder {
+  @apply text-[#707885];
+}
+.palette-label {
+  @apply text-[9px] font-medium tracking-[1.3px] text-[#626b79] pt-[16px] pr-[21px] pb-[8px] pl-[21px] m-0;
+}
+.command-list button {
+  @apply flex items-center gap-[13px] py-[12px] px-[13px] w-full rounded-[5px] text-[12px] text-[#acb2bf] text-left;
+}
+.command-list button:hover,
+.command-list button:focus-visible {
+  @apply text-[#e8daa7] bg-[#f5d5470b];
+}
+.command-list button svg {
+  @apply text-[#848c99];
+}
+.command-list button kbd {
+  @apply ml-auto text-[#686f7c] text-[10px];
+}
+.palette-footer kbd {
+  @apply ml-auto border border-[#35383f] py-[1px] px-[5px] rounded-[3px];
+}
+.spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+::-webkit-scrollbar {
+  @apply w-[7px] h-[7px];
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-[#343740] rounded-[6px];
+}
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+@media (min-height: 880px) {
+  .welcome {
+    @apply pt-[65px];
+  }
+  .welcome-symbol {
+    @apply mt-[39px];
+  }
+  .welcome h1 {
+    @apply mt-[28px];
+  }
+  .welcome-rule {
+    @apply mt-[38px];
+  }
+  .welcome-stamp {
+    @apply mt-[48px];
+  }
+  .output-panel {
+    @apply h-[210px];
+  }
+}
+@media (max-width: 1050px) {
+  .sidebar {
+    @apply w-[205px];
+  }
+  .command-trigger {
+    @apply w-[230px];
+  }
+  .welcome {
+    @apply pl-[8%];
+  }
+  .workspace-crumb {
+    @apply hidden;
+  }
+  .status-right {
+    @apply gap-[12px];
+  }
+  .preview-note {
+    @apply hidden;
+  }
+}
+@media (max-height: 760px) {
+  .welcome {
+    @apply pt-[26px];
+  }
+  .welcome-symbol {
+    @apply mt-[24px] w-[59px] h-[59px];
+  }
+  .welcome-symbol > svg {
+    @apply w-[40px] h-[40px];
+  }
+  .welcome h1 {
+    @apply text-[36px] mt-[18px] mr-0 mb-[12px] ml-0;
+  }
+  .welcome-actions {
+    @apply mt-[18px];
+  }
+  .welcome-rule {
+    @apply mt-[22px];
+  }
+  .welcome-stamp {
+    @apply mt-[25px];
+  }
+  .output-panel {
+    @apply h-[160px];
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *:before,
+  *:after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .sidebar {
+    @apply w-[180px];
+  }
+  .command-trigger {
+    @apply w-[180px];
+  }
+  .command-trigger kbd,
+  .version {
+    @apply hidden;
+  }
+  .topbar {
+    @apply gap-[10px] pr-[12px];
+  }
+  .topbar-right {
+    @apply gap-[8px];
+  }
+  .welcome {
+    @apply pl-[25px] pr-[20px];
+  }
+  .welcome h1 {
+    @apply text-[32px] tracking-[-1.6px];
+  }
+  .welcome-actions {
+    @apply flex-wrap;
+  }
+  .quick-shortcuts {
+    @apply gap-[15px];
+  }
+  .status-right > span:nth-child(2),
+  .status-right > span:nth-child(3) {
+    @apply hidden;
+  }
+  .editor-toolbar-actions {
+    @apply py-0 px-[10px] gap-[8px];
+  }
+  .compile-button kbd {
+    @apply hidden;
+  }
+}
+.topbar .command-trigger {
+  @apply ml-auto;
+}
+.sidebar-resizer:hover,
+.sidebar-resizer:focus-visible {
+  @apply bg-[#f5d54750];
+}
+.panel-form {
+  @apply p-[12px];
+}
+.panel-form .full-width {
+  @apply mb-[8px];
+}
+.panel-caption {
+  @apply text-[11px] text-[#808997] leading-[1.7];
+}
+.panel-scroll {
+  @apply min-h-0 overflow-auto flex-1;
+}
+.full-width {
+  @apply w-full;
+}
+.small-input,
+.input-with-icon {
+  @apply w-full bg-[#101113] border border-[#383b44] rounded-[4px] py-[8px] px-[9px] text-[#cdd0d8] text-[11px] mb-[8px];
+}
+.small-input:focus,
+.input-with-icon:focus-within {
+  outline: 1px solid #c8ae44;
+}
+.input-with-icon {
+  @apply flex gap-[7px] items-center;
+}
+.input-with-icon input {
+  background: none;
+  @apply border-0;
+  outline: 0;
+  @apply min-w-0 w-full text-foreground text-[12px];
+}
+.search-options {
+  @apply flex gap-[7px] mb-[10px];
+}
+.search-options button {
+  @apply border border-[#343740] py-[4px] px-[7px] rounded-[3px] text-[#8c95a3] [font-family:monospace];
+}
+.search-options button.enabled {
+  @apply border-[#b39b39] text-accent bg-[#f5d54710];
+}
+.search-file {
+  @apply flex items-center gap-[7px] text-[11px] text-[#d3c583] py-[9px] px-[12px] bg-[#202117] wrap-anywhere;
+}
+.search-hit {
+  @apply flex gap-[8px] py-[6px] px-[12px] text-[10px] max-w-full w-full text-left;
+}
+.search-hit:hover {
+  @apply bg-[#f5d5470b];
+}
+.search-hit span {
+  @apply text-[#697384] min-w-[20px];
+}
+.search-hit code {
+  @apply text-[#aeb5c2] overflow-hidden whitespace-nowrap text-ellipsis;
+}
+.git-branch {
+  @apply flex items-center gap-[7px] mt-0 mr-0 mb-[12px] ml-0;
+}
+.git-branch button {
+  @apply ml-auto;
+}
+.commit-input {
+  @apply h-[65px] resize-y [font-family:inherit];
+}
+.list-section {
+  @apply flex items-center justify-between text-[#828b9b] text-[9px] tracking-[1px] py-[10px] px-[13px] bg-[#ffffff02];
+}
+.list-section span {
+  @apply bg-[#2e313a] py-[1px] px-[5px] rounded-[8px];
+}
+.git-file {
+  @apply flex pt-0 pr-[9px] pb-0 pl-[12px] items-center;
+}
+.git-file-name {
+  @apply min-w-0 flex items-center gap-[6px] flex-1 text-[11px] py-[8px] px-0 text-left;
+}
+.git-file-name span {
+  @apply flex-1 min-w-0 overflow-hidden whitespace-nowrap text-ellipsis;
+}
+.git-file-name b {
+  @apply text-[10px] text-[#c8b15c];
+}
+.git-file:hover {
+  @apply bg-[#ffffff04];
+}
+.git-log {
+  font:
+    10px/1.9 'JetBrains Mono',
+    monospace;
+  @apply py-0 px-[13px] text-[#8e99ab] whitespace-pre-wrap wrap-anywhere;
+}
+.outline button {
+  @apply flex gap-[8px] py-[5px] px-[14px] items-center w-full text-[11px] text-[#939dab];
+}
+.outline button:hover {
+  @apply text-[#e9dba8] bg-[#f5d54708];
+}
+.outline small {
+  @apply ml-auto text-[9px] text-[#5e6878];
+}
+.task-entry:hover {
+  @apply bg-[#f5d54708];
+}
+.task-entry small {
+  @apply block text-[9px] text-[#6a7485] mt-[4px];
+}
+.task-entry svg {
+  @apply text-[#c8b15c];
+}
+.split-column .breadcrumbs {
+  @apply py-0 px-[12px];
+}
+.breadcrumbs .split-select {
+  @apply ml-auto text-[#8e99ab] text-[9px];
+}
+.breadcrumbs select {
+  @apply flex-1 w-0;
+}
+.hidden {
+  display: none !important;
+}
+.conflict-banner,
+.recovery-banner {
+  @apply flex gap-[10px] items-center py-[8px] px-[15px] bg-[#3b2d19] text-[#e9c77e] text-[11px] leading-[1.6];
+}
+.conflict-banner span {
+  @apply flex-1;
+}
+.conflict-banner button,
+.recovery-banner button {
+  @apply text-accent underline whitespace-nowrap;
+}
+.panel-resizer:hover,
+.panel-resizer:focus-visible {
+  @apply bg-[#f5d54750];
+}
+.panel-tabs > button {
+  @apply py-[12px] px-0 text-[10px] text-[#727c8d] tracking-[0.6px] border-b border-b-[transparent];
+}
+.panel-tabs > button.current {
+  @apply border-b-[#d2b746] text-[#d2c48a];
+}
+.panel-tabs span {
+  @apply text-[8px] ml-[7px] bg-[#393522] py-[2px] px-[4px] rounded-[3px];
+}
+.terminal-tabs > div {
+  @apply flex items-center pt-0 pr-[5px] pb-0 pl-[10px] border-r border-r-[#272a32];
+}
+.terminal-tabs > div.current {
+  @apply bg-[#f5d54708];
+  box-shadow: inset 0 -1px #c8b15c;
+}
+.terminal-tab-name > span:first-of-type {
+  @apply text-ellipsis overflow-hidden whitespace-nowrap;
+}
+.terminal-tab-name small {
+  @apply text-[8px] whitespace-nowrap text-[#a5d6bd];
+}
+.terminal-tab-name small.failed {
+  @apply text-[#ed8881];
+}
+.terminal-empty .secondary-button {
+  @apply min-h-[30px] py-[6px] px-[12px];
+}
+.status-left button {
+  @apply flex gap-[5px] items-center text-[9px];
+}
+.recent-workspace span {
+  @apply overflow-hidden text-ellipsis whitespace-nowrap;
+}
+.recent-workspace:hover {
+  @apply text-[#e5d596];
+}
+.context-actions {
+  @apply flex flex-col gap-[4px] mt-[16px];
+}
+.context-actions button {
+  @apply p-[10px] flex gap-[10px] text-[#b4bdcb] rounded-[4px] text-[12px] text-left;
+}
+.context-actions button:hover {
+  @apply bg-[#f5d54710] text-[#e9d59c];
+}
+.command-list button.highlighted {
+  @apply bg-[#f5d54710] text-[#e8daa5];
+}
+.command-list button small {
+  @apply block text-[10px] text-[#748094] mt-[4px] wrap-anywhere;
+}
+.command-list button > span {
+  @apply min-w-0 flex-1;
+}
+.toast > button:not(.icon-button) {
+  @apply text-accent whitespace-nowrap;
+}
+@media (max-width: 1050px) {
+  .topbar .command-trigger {
+    @apply w-[210px];
+  }
+  .editor-toolbar-actions {
+    @apply gap-[8px];
+  }
+}
+@media (max-width: 850px) {
+  .brand {
+    @apply text-[11px];
+  }
+  .topbar .command-trigger {
+    @apply w-[160px];
+  }
+  .command-trigger kbd {
+    @apply hidden;
+  }
+  .terminal-empty {
+    @apply flex-wrap;
+  }
+  .editor-toolbar-actions {
+    @apply py-0 px-[8px] gap-[6px];
+  }
+}
+.language-hover {
+  @apply m-0 p-[12px] max-w-[500px] max-h-[300px] whitespace-pre-wrap overflow-auto text-[#cdd0d8];
+  font:
+    11px/1.7 'JetBrains Mono',
+    monospace;
+}
+.problems-list button {
+  @apply flex items-center gap-[10px] text-[11px] text-[#aab4c5] text-left py-[7px] px-0 w-full;
+}
+.problems-list svg {
+  @apply text-[#e5b570] shrink-0;
+}
+.problems-list span {
+  @apply flex-1;
+}
+.problems-list small {
+  @apply text-[10px] text-[#737e91];
+}
+.problems-list button:hover {
+  @apply text-accent;
+}
