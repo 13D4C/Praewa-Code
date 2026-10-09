@@ -38,6 +38,7 @@ func NewApp() *App {
 }
 
 func (a *App) startup(ctx context.Context) {
+	prepareCamera()
 	a.ctx = ctx
 	a.languages.OnDiagnostics = func(event ide.LanguageDiagnostics) { runtime.EventsEmit(ctx, "language:diagnostics", event) }
 	a.builder.OnOutput = func(text string) { runtime.EventsEmit(ctx, "build:output", text) }
@@ -55,6 +56,7 @@ func (a *App) beforeClose(ctx context.Context) bool {
 }
 
 func (a *App) shutdown(context.Context) {
+	a.CameraAccess(false)
 	a.builder.Cancel()
 	a.languages.Close()
 	a.terminals.CloseAll()

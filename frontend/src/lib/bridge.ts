@@ -16,6 +16,7 @@ import type {
 } from './types';
 import type { LanguageStatus } from './language';
 type Backend = {
+  CameraAccess(enabled: boolean): Promise<void>;
   LanguageSync(path: string, content: string): Promise<LanguageStatus>;
   LanguageRequest(
     path: string,

@@ -1,5 +1,7 @@
 frontend/node_modules/
 frontend/dist/
+frontend/public/vision/vision.js
+frontend/public/vision/wasm/
 frontend/wailsjs/
 build/bin/
 bin/

@@ -41,6 +41,8 @@
   import AgentModes from './AgentModes.svelte';
   import AgentRequests from './AgentRequests.svelte';
   import MarkdownPreview from './MarkdownPreview.svelte';
+  import SixSevenChallenge from './SixSevenChallenge.svelte';
+  import { PromptChallenge } from '../lib/six-seven';
   import {
     agentBackend,
     onAgentEvent,
@@ -102,6 +104,17 @@
   let connectAttempt: Promise<boolean> | undefined;
   let retryAt = 0;
   let disposed = false;
+  type PendingPrompt = {
+    id: string;
+    chatId: string;
+    threadId: string;
+    key: string;
+    text: string;
+    mode: AgentMode;
+    files: ChatFile[];
+  };
+  const challengeGate = new PromptChallenge<PendingPrompt>();
+  let pendingPrompt = $state<PendingPrompt | null>(null);
   const chat = $derived(chats.find((item) => item.id === selectedId));
   const conversation = $derived(
     chat?.threadId ? conversations[chat.threadId] : undefined,
@@ -208,6 +221,7 @@
     const key = 'praewa-agent-drafts:' + (workspace || 'no-workspace');
     if (loadedKey === key) return;
     untrack(() => {
+      cancelChallenge();
       persist();
       restore(key);
       loadedKey = key;
@@ -234,6 +248,16 @@
       }
     }, 200);
     return () => clearTimeout(timer);
+  });
+  $effect(() => {
+    const pending = pendingPrompt;
+    if (pending && !matchesPrompt(pending)) untrack(cancelChallenge);
+  });
+  $effect(() => {
+    if (pendingPrompt?.id)
+      void tick().then(() => {
+        if (messageList) messageList.scrollTop = 0;
+      });
   });
   $effect(() => {
     if (visible && !managingMode) void tick().then(() => composer?.focus());
@@ -379,34 +403,82 @@
       loadingChat = false;
     }
   }
-  async function sendMessage() {
+  function cancelChallenge() {
+    challengeGate.cancel();
+    pendingPrompt = null;
+  }
+  function matchesPrompt(pending: PendingPrompt) {
+    return (
+      !disposed &&
+      visible &&
+      !document.hidden &&
+      !managingMode &&
+      !loadingChat &&
+      !conversation?.active &&
+      loadedKey === pending.key &&
+      chat?.id === pending.chatId &&
+      chat.threadId === pending.threadId &&
+      chat.composer.trim() === pending.text &&
+      JSON.stringify(copyMode(mode)) === JSON.stringify(pending.mode) &&
+      JSON.stringify(chat.files) === JSON.stringify(pending.files)
+    );
+  }
+  function sendMessage() {
     if (
       !chat?.composer.trim() ||
+      !visible ||
+      document.hidden ||
+      pendingPrompt ||
       sending ||
       loadingChat ||
       conversation?.active
     )
       return;
-    const target = chat;
-    const key = loadedKey;
-    const text = target.composer.trim();
-    const selectedMode = copyMode(mode);
-    const files = target.files.map((file) => ({ ...file }));
+    const pending: PendingPrompt = {
+      id: crypto.randomUUID(),
+      chatId: chat.id,
+      threadId: chat.threadId,
+      key: loadedKey,
+      text: chat.composer.trim(),
+      mode: copyMode(mode),
+      files: chat.files.map((file) => ({ ...file })),
+    };
+    challengeGate.begin(pending.id, pending);
+    pendingPrompt = pending;
+    historyVisible = false;
+    pickerVisible = false;
+    agentError = '';
+  }
+  function completeChallenge(id: string, count: number) {
+    if (!pendingPrompt || pendingPrompt.id !== id) return;
+    if (!matchesPrompt(pendingPrompt)) {
+      cancelChallenge();
+      return;
+    }
+    const approved = challengeGate.complete(id, count);
+    if (!approved) return;
+    pendingPrompt = null;
+    void sendApprovedMessage(approved);
+  }
+  async function sendApprovedMessage(pending: PendingPrompt) {
+    if (sending || !matchesPrompt(pending)) return;
+    const target = chat!;
+    const { text, mode: selectedMode, files } = pending;
     sending = true;
     agentError = '';
     try {
       if (!connection.connected && !(await connectAgent())) return;
-      if (disposed || loadedKey !== key) return;
+      if (!matchesPrompt(pending)) return;
       const context = await Promise.all(
         files.map(async (file) => ({
           ...file,
           content: await onreadfile(file.path),
         })),
       );
-      if (loadedKey !== key) return;
+      if (!matchesPrompt(pending)) return;
       const result = await agentBackend.send({
-        id: crypto.randomUUID(),
-        threadId: target.threadId,
+        id: pending.id,
+        threadId: pending.threadId,
         text,
         mode: selectedMode,
         files: context,
@@ -455,6 +527,7 @@
     void tick().then(() => composer?.focus());
   }
   function newChat() {
+    cancelChallenge();
     historyVisible = false;
     managingMode = false;
     if (
@@ -473,13 +546,14 @@
     focusComposer();
   }
   function attach(file: ChatFile) {
+    if (pendingPrompt || sending) return;
     if (chat && !chat.files.some((item) => item.path === file.path))
       chat.files = [...chat.files, { ...file }];
     pickerVisible = false;
     focusComposer();
   }
   function suggest(text: string, includeFile = false) {
-    if (!chat) return;
+    if (!chat || pendingPrompt || sending) return;
     chat.composer = text;
     if (includeFile && activeFile) attach(activeFile);
     else focusComposer();
@@ -493,9 +567,16 @@
 
 <svelte:window
   onpointerdown={outside}
-  onbeforeunload={persist}
+  onbeforeunload={() => {
+    cancelChallenge();
+    persist();
+  }}
   onkeydown={(event) => {
-    if (event.key === 'Escape' && (historyVisible || pickerVisible)) {
+    if (event.key === 'Escape' && pendingPrompt) {
+      event.preventDefault();
+      cancelChallenge();
+      focusComposer();
+    } else if (event.key === 'Escape' && (historyVisible || pickerVisible)) {
       event.preventDefault();
       historyVisible = false;
       pickerVisible = false;
@@ -529,13 +610,17 @@
         class="icon-button"
         aria-label="Close agent chat"
         title="Close"
-        onclick={onclose}><X size={15} /></button
+        onclick={() => {
+          cancelChallenge();
+          onclose();
+        }}><X size={15} /></button
       >
       {#if historyVisible}<div class="chat-history" aria-label="Saved chats">
           <div class="picker-label">CHAT HISTORY</div>
           {#each [...chats].reverse() as item}<button
               class:current={item.id === selectedId}
               onclick={() => {
+                cancelChallenge();
                 selectedId = item.id;
                 historyVisible = false;
                 managingMode = false;
@@ -575,149 +660,167 @@
     <FolderOpen size={12} /><span>{workspaceName || 'No workspace'}</span>
   </div>
   {#if chat}
-    <AgentModes
-      {workspace}
-      {files}
-      {modes}
-      selected={mode}
-      {visible}
-      bind:editing={managingMode}
-      {onreadfile}
-      onselect={(id) => {
-        if (chat) chat.modeId = id;
-      }}
-      onsave={(saved) => {
-        modes = modes.some((item) => item.id === saved.id)
-          ? modes.map((item) => (item.id === saved.id ? saved : item))
-          : [...modes, saved];
-        if (chat) chat.modeId = saved.id;
-      }}
-    />
+    <fieldset
+      class="m-0 min-w-0 border-0 p-0"
+      disabled={!!pendingPrompt || sending}
+    >
+      <AgentModes
+        {workspace}
+        {files}
+        {modes}
+        selected={mode}
+        {visible}
+        bind:editing={managingMode}
+        {onreadfile}
+        onselect={(id) => {
+          if (chat) chat.modeId = id;
+        }}
+        onsave={(saved) => {
+          modes = modes.some((item) => item.id === saved.id)
+            ? modes.map((item) => (item.id === saved.id ? saved : item))
+            : [...modes, saved];
+          if (chat) chat.modeId = saved.id;
+        }}
+      />
+    </fieldset>
     {#if !managingMode}
       <div class="chat-messages" bind:this={messageList}>
-        {#if loadingChat}<p class="loading-chat">Loading chat…</p>{/if}
-        {#if conversation}
-          <div class="conversation-title">
-            {conversation.thread.name || chat.title}
-          </div>
-          {#each conversation.messages as message (message.id)}<article
-              class="chat-draft"
-              class:agent-reply={message.role === 'assistant'}
-              aria-label={message.role === 'assistant'
-                ? 'Agent reply'
-                : 'Sent message'}
-            >
-              <div class="message-meta">
-                <span class="user-avatar"
-                  >{#if message.role === 'assistant'}<Bot
-                      size={12}
-                    />{:else}Y{/if}</span
-                ><strong
-                  >{message.role === 'assistant' ? 'Agent' : 'You'}</strong
-                ><span class="message-time"
-                  >{message.createdAt
-                    ? time(new Date(message.createdAt * 1000).toISOString())
-                    : ''}</span
-                >{#if message.status === 'inProgress'}<span
-                    class="message-state">Working</span
-                  >{/if}
-              </div>
-              {#if message.role === 'assistant' && message.text}<div
-                  class="reply-markdown"
-                >
-                  <MarkdownPreview content={message.text} />
-                </div>{:else}<div class="message-text">
-                  {message.text || 'Thinking…'}
-                </div>{/if}
-            </article>{/each}
-          <AgentRequests
-            requests={conversation.requests}
-            onerror={(text) => (agentError = text)}
-          />
-          {#if conversation.active}<div class="agent-working">
-              <Circle size={9} />Agent is working…
-            </div>{/if}
-          {#if conversation.error}<p class="agent-error" role="alert">
-              {conversation.error}
-            </p>{/if}
-        {/if}
-        {#if !chat.messages.length && !conversation}<div class="chat-welcome">
-            <div class="agent-symbol">
-              <Bot size={28} /><span><Sparkles size={10} /></span>
+        {#if pendingPrompt}
+          {@const pending = pendingPrompt}
+          {#key pending.id}
+            <SixSevenChallenge
+              oncomplete={(count) => completeChallenge(pending.id, count)}
+              oncancel={cancelChallenge}
+            />
+          {/key}
+        {:else}
+          {#if loadingChat}<p class="loading-chat">Loading chat…</p>{/if}
+          {#if conversation}
+            <div class="conversation-title">
+              {conversation.thread.name || chat.title}
             </div>
-            <h2>
-              {mode.behavior === 'chat'
-                ? `Talk to ${mode.name}`
-                : 'What are we building?'}
-            </h2>
-            <p>
-              {mode.description}
-            </p>
-            <div class="chat-suggestions">
-              <button
-                onclick={() =>
-                  suggest(
-                    'Explain this file and how it fits into the project.',
-                    true,
-                  )}
-                ><FileCode2 size={14} /><span>Explain this file</span></button
+            {#each conversation.messages as message (message.id)}<article
+                class="chat-draft"
+                class:agent-reply={message.role === 'assistant'}
+                aria-label={message.role === 'assistant'
+                  ? 'Agent reply'
+                  : 'Sent message'}
               >
-              <button
-                onclick={() =>
-                  suggest('Help me plan the changes I want to make.')}
-                ><PencilRuler size={14} /><span>Plan a change</span></button
-              >
-              <button
-                onclick={() =>
-                  suggest(
-                    'Help me find and understand a bug in this file.',
-                    true,
-                  )}><Bug size={14} /><span>Find a bug</span></button
-              >
-            </div>
-          </div>
-        {:else if chat.messages.length}
-          <div class="conversation-title">
-            {conversation ? 'LOCAL DRAFTS' : chat.title}
-          </div>
-          {#each chat.messages as draft (draft.id)}<article
-              class="chat-draft"
-              aria-label="Saved message draft"
-            >
-              <div class="message-meta">
-                <span class="user-avatar">Y</span><strong>You</strong><span
-                  class="message-time">{time(draft.createdAt)}</span
-                ><span class="message-state">Draft</span>
-              </div>
-              {#if draft.mode}<div
-                  class="message-mode"
-                  title={draft.mode.description}
-                >
-                  <Bot size={11} /><span>{draft.mode.name}</span>
-                  {#if draft.mode.skills.length}<span
-                      >· {draft.mode.skills.length} skill{draft.mode.skills
-                        .length === 1
-                        ? ''
-                        : 's'}</span
+                <div class="message-meta">
+                  <span class="user-avatar"
+                    >{#if message.role === 'assistant'}<Bot
+                        size={12}
+                      />{:else}Y{/if}</span
+                  ><strong
+                    >{message.role === 'assistant' ? 'Agent' : 'You'}</strong
+                  ><span class="message-time"
+                    >{message.createdAt
+                      ? time(new Date(message.createdAt * 1000).toISOString())
+                      : ''}</span
+                  >{#if message.status === 'inProgress'}<span
+                      class="message-state">Working</span
                     >{/if}
-                </div>{/if}
-              <div class="message-text">{draft.text}</div>
-              {#if connection.connected}<button
-                  class="use-draft"
-                  onclick={() => {
-                    if (chat) {
-                      chat.composer = draft.text;
-                      chat.files = draft.files.map((file) => ({ ...file }));
-                      focusComposer();
-                    }
-                  }}>Use this draft</button
-                >{/if}
-              {#if draft.files.length}<div class="message-files">
-                  {#each draft.files as file}<span title={relative(file.path)}
-                      ><FileIcon name={file.name} size={13} />{file.name}</span
-                    >{/each}
-                </div>{/if}
-            </article>{/each}
+                </div>
+                {#if message.role === 'assistant' && message.text}<div
+                    class="reply-markdown"
+                  >
+                    <MarkdownPreview content={message.text} />
+                  </div>{:else}<div class="message-text">
+                    {message.text || 'Thinking…'}
+                  </div>{/if}
+              </article>{/each}
+            <AgentRequests
+              requests={conversation.requests}
+              onerror={(text) => (agentError = text)}
+            />
+            {#if conversation.active}<div class="agent-working">
+                <Circle size={9} />Agent is working…
+              </div>{/if}
+            {#if conversation.error}<p class="agent-error" role="alert">
+                {conversation.error}
+              </p>{/if}
+          {/if}
+          {#if !chat.messages.length && !conversation}<div class="chat-welcome">
+              <div class="agent-symbol">
+                <Bot size={28} /><span><Sparkles size={10} /></span>
+              </div>
+              <h2>
+                {mode.behavior === 'chat'
+                  ? `Talk to ${mode.name}`
+                  : 'What are we building?'}
+              </h2>
+              <p>
+                {mode.description}
+              </p>
+              <div class="chat-suggestions">
+                <button
+                  onclick={() =>
+                    suggest(
+                      'Explain this file and how it fits into the project.',
+                      true,
+                    )}
+                  ><FileCode2 size={14} /><span>Explain this file</span></button
+                >
+                <button
+                  onclick={() =>
+                    suggest('Help me plan the changes I want to make.')}
+                  ><PencilRuler size={14} /><span>Plan a change</span></button
+                >
+                <button
+                  onclick={() =>
+                    suggest(
+                      'Help me find and understand a bug in this file.',
+                      true,
+                    )}><Bug size={14} /><span>Find a bug</span></button
+                >
+              </div>
+            </div>
+          {:else if chat.messages.length}
+            <div class="conversation-title">
+              {conversation ? 'LOCAL DRAFTS' : chat.title}
+            </div>
+            {#each chat.messages as draft (draft.id)}<article
+                class="chat-draft"
+                aria-label="Saved message draft"
+              >
+                <div class="message-meta">
+                  <span class="user-avatar">Y</span><strong>You</strong><span
+                    class="message-time">{time(draft.createdAt)}</span
+                  ><span class="message-state">Draft</span>
+                </div>
+                {#if draft.mode}<div
+                    class="message-mode"
+                    title={draft.mode.description}
+                  >
+                    <Bot size={11} /><span>{draft.mode.name}</span>
+                    {#if draft.mode.skills.length}<span
+                        >· {draft.mode.skills.length} skill{draft.mode.skills
+                          .length === 1
+                          ? ''
+                          : 's'}</span
+                      >{/if}
+                  </div>{/if}
+                <div class="message-text">{draft.text}</div>
+                {#if connection.connected}<button
+                    class="use-draft"
+                    onclick={() => {
+                      if (chat) {
+                        chat.composer = draft.text;
+                        chat.files = draft.files.map((file) => ({ ...file }));
+                        focusComposer();
+                      }
+                    }}>Use this draft</button
+                  >{/if}
+                {#if draft.files.length}<div class="message-files">
+                    {#each draft.files as file}<span title={relative(file.path)}
+                        ><FileIcon
+                          name={file.name}
+                          size={13}
+                        />{file.name}</span
+                      >{/each}
+                  </div>{/if}
+              </article>{/each}
+          {/if}
         {/if}
       </div>
       {#if connectionError}<div class="agent-connection-error" role="alert">
@@ -731,113 +834,124 @@
           {storageError}
         </p>{/if}
       <div class="composer-area" bind:this={contextRoot}>
-        <div class="composer-context">
-          <button
-            class="context-button"
-            class:active={pickerVisible}
-            aria-label="Add file context"
-            aria-expanded={pickerVisible}
-            disabled={!files.length}
-            title="Add file context"
-            onclick={() => {
-              query = '';
-              pickerVisible = !pickerVisible;
-            }}><Paperclip size={13} /><span>Add context</span></button
-          >
-          {#if activeFile && !chat.files.some((file) => file.path === activeFile.path)}<button
-              class="active-file-button"
-              title={`Add ${relative(activeFile.path)}`}
-              aria-label={`Attach active file ${activeFile.name}`}
-              onclick={() => attach(activeFile)}
-              ><FileIcon name={activeFile.name} size={13} /><span
-                >{activeFile.name}</span
-              ><Plus size={10} /></button
-            >{/if}
-        </div>
-        {#if pickerVisible}<div
-            class="context-picker"
-            aria-label="Context files"
-          >
-            <div class="context-search">
-              <Search size={13} /><input
-                aria-label="Filter context files"
-                placeholder="Find a file…"
-                bind:value={query}
-              />
-            </div>
-            <div class="context-files">
-              {#each filteredFiles as file}<button
-                  title={relative(file.path)}
-                  class:attached={chat.files.some(
-                    (item) => item.path === file.path,
-                  )}
-                  onclick={() => attach(file)}
-                  ><FileIcon name={file.name} /><span
-                    >{file.name}<small>{relative(file.path)}</small></span
-                  ><Plus size={12} /></button
-                >{/each}{#if !filteredFiles.length}<p>No matching files</p>{/if}
-            </div>
-          </div>{/if}
-        <div class="message-composer">
-          {#if chat.files.length}<div class="attached-files">
-              {#each chat.files as file}<span
-                  class="context-chip"
-                  title={relative(file.path)}
-                  ><FileIcon name={file.name} size={13} /><span
-                    >{file.name}</span
-                  ><button
-                    aria-label={`Remove ${file.name} from context`}
-                    onclick={() => {
-                      if (chat)
-                        chat.files = chat.files.filter(
-                          (item) => item.path !== file.path,
-                        );
-                    }}><X size={11} /></button
-                  ></span
-                >{/each}
-            </div>{/if}
-          <textarea
-            bind:this={composer}
-            bind:value={chat.composer}
-            aria-label="Message for agent"
-            placeholder="Write a message for your agent…"
-            maxlength="20000"
-            onkeydown={(event) => {
-              if (
-                event.key === 'Enter' &&
-                !event.shiftKey &&
-                !event.isComposing
-              ) {
-                event.preventDefault();
-                event.stopPropagation();
-                void sendMessage();
-              }
-            }}></textarea>
-          <div class="composer-toolbar">
-            {#if conversation?.canStop}<button
-                class="save-draft stop-agent"
-                aria-label="Stop agent response"
-                onclick={stopAgent}
-                ><Square size={12} /><span>Stop</span></button
-              >
-            {:else}<button
-                class="save-draft"
-                disabled={!chat.composer.trim() ||
-                  sending ||
-                  loadingChat ||
-                  !!conversation?.active}
-                aria-label="Send message to agent"
-                title="Send message"
-                onclick={() => void sendMessage()}
-                ><span>{sending ? 'Sending…' : 'Send'}</span><ArrowUp
-                  size={15}
-                /></button
+        <fieldset
+          class="m-0 min-w-0 border-0 p-0"
+          disabled={!!pendingPrompt || sending}
+        >
+          <div class="composer-context">
+            <button
+              class="context-button"
+              class:active={pickerVisible}
+              aria-label="Add file context"
+              aria-expanded={pickerVisible}
+              disabled={!files.length}
+              title="Add file context"
+              onclick={() => {
+                query = '';
+                pickerVisible = !pickerVisible;
+              }}><Paperclip size={13} /><span>Add context</span></button
+            >
+            {#if activeFile && !chat.files.some((file) => file.path === activeFile.path)}<button
+                class="active-file-button"
+                title={`Add ${relative(activeFile.path)}`}
+                aria-label={`Attach active file ${activeFile.name}`}
+                onclick={() => attach(activeFile)}
+                ><FileIcon name={activeFile.name} size={13} /><span
+                  >{activeFile.name}</span
+                ><Plus size={10} /></button
               >{/if}
           </div>
-        </div>
+          {#if pickerVisible}<div
+              class="context-picker"
+              aria-label="Context files"
+            >
+              <div class="context-search">
+                <Search size={13} /><input
+                  aria-label="Filter context files"
+                  placeholder="Find a file…"
+                  bind:value={query}
+                />
+              </div>
+              <div class="context-files">
+                {#each filteredFiles as file}<button
+                    title={relative(file.path)}
+                    class:attached={chat.files.some(
+                      (item) => item.path === file.path,
+                    )}
+                    onclick={() => attach(file)}
+                    ><FileIcon name={file.name} /><span
+                      >{file.name}<small>{relative(file.path)}</small></span
+                    ><Plus size={12} /></button
+                  >{/each}{#if !filteredFiles.length}<p>
+                    No matching files
+                  </p>{/if}
+              </div>
+            </div>{/if}
+          <div class="message-composer">
+            {#if chat.files.length}<div class="attached-files">
+                {#each chat.files as file}<span
+                    class="context-chip"
+                    title={relative(file.path)}
+                    ><FileIcon name={file.name} size={13} /><span
+                      >{file.name}</span
+                    ><button
+                      aria-label={`Remove ${file.name} from context`}
+                      onclick={() => {
+                        if (chat)
+                          chat.files = chat.files.filter(
+                            (item) => item.path !== file.path,
+                          );
+                      }}><X size={11} /></button
+                    ></span
+                  >{/each}
+              </div>{/if}
+            <textarea
+              bind:this={composer}
+              bind:value={chat.composer}
+              aria-label="Message for agent"
+              placeholder="Write a message for your agent…"
+              maxlength="20000"
+              onkeydown={(event) => {
+                if (
+                  event.key === 'Enter' &&
+                  !event.shiftKey &&
+                  !event.isComposing
+                ) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void sendMessage();
+                }
+              }}></textarea>
+            <div class="composer-toolbar">
+              {#if conversation?.canStop}<button
+                  class="save-draft stop-agent"
+                  aria-label="Stop agent response"
+                  onclick={stopAgent}
+                  ><Square size={12} /><span>Stop</span></button
+                >
+              {:else}<button
+                  class="save-draft"
+                  disabled={!chat.composer.trim() ||
+                    sending ||
+                    loadingChat ||
+                    !!conversation?.active}
+                  aria-label="Send message to agent"
+                  title="Send message"
+                  onclick={() => void sendMessage()}
+                  ><span>{sending ? 'Sending…' : 'Send'}</span><ArrowUp
+                    size={15}
+                  /></button
+                >{/if}
+            </div>
+          </div>
+        </fieldset>
         <div class="composer-hint">
-          <kbd>Enter</kbd> to send ·
-          <kbd>Shift + Enter</kbd> for a new line
+          {#if pendingPrompt}ทำ Six Seven ครบ 50 ครั้งเพื่อส่งข้อความ{:else}<kbd
+              >Enter</kbd
+            >
+            → Six Seven 50 ครั้ง ·
+            <kbd>Shift + Enter</kbd> for a new line
+          {/if}
         </div>
       </div>
     {/if}

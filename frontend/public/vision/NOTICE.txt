@@ -1,0 +1,9 @@
+Six Seven camera detection uses Google MediaPipe Tasks Vision 0.10.32 and the
+MediaPipe Pose Landmarker Lite float16 model, distributed under Apache 2.0.
+
+MediaPipe: https://github.com/google-ai-edge/mediapipe
+Model: https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task
+
+The Six Seven counter and prompt gate are implemented for Praewa Code.
+Concept reference: https://github.com/TypeThe0ry/6-7challange
+No source code from that repository is included.
