@@ -1,4 +1,21 @@
 export const SIX_SEVEN_TARGET = 50;
+export const SIX_SEVEN_MIN_TARGET = 1;
+export const SIX_SEVEN_MAX_TARGET = 1000;
+export const SIX_SEVEN_TARGET_STORAGE = 'praewa-six-seven-target';
+
+export function parseSixSevenTarget(value: unknown): number | null {
+  if (
+    (typeof value !== 'number' && typeof value !== 'string') ||
+    (typeof value === 'string' && !value.trim())
+  )
+    return null;
+  const target = Number(value);
+  return Number.isInteger(target) &&
+    target >= SIX_SEVEN_MIN_TARGET &&
+    target <= SIX_SEVEN_MAX_TARGET
+    ? target
+    : null;
+}
 
 export type PosePoint = {
   x: number;
@@ -30,6 +47,7 @@ type Position = {
 };
 
 export class SixSevenCounter {
+  private target: number;
   private count = 0;
   private anchor: Position | null = null;
   private smooth: Position | null = null;
@@ -41,6 +59,10 @@ export class SixSevenCounter {
   private lastTime = -1;
   private lastSeen = -Infinity;
   private lastTransition = -Infinity;
+
+  constructor(target = SIX_SEVEN_TARGET) {
+    this.target = parseSixSevenTarget(target) ?? SIX_SEVEN_TARGET;
+  }
 
   reset() {
     this.count = 0;
@@ -157,7 +179,7 @@ export class SixSevenCounter {
     this.candidate = 0;
     this.lastTransition = timestamp;
     if (this.halfway) {
-      this.count = Math.min(SIX_SEVEN_TARGET, this.count + 1);
+      this.count = Math.min(this.target, this.count + 1);
       this.halfway = false;
     } else this.halfway = true;
     return this.progress(arms, 'ready');
@@ -213,10 +235,16 @@ export class SixSevenCounter {
 }
 
 export class PromptChallenge<T> {
-  private pending: { id: string; value: T } | null = null;
+  private pending: { id: string; value: T; target: number } | null = null;
 
-  begin(id: string, value: T) {
-    this.pending = { id, value };
+  begin(id: string, value: T, target = SIX_SEVEN_TARGET) {
+    const required = parseSixSevenTarget(target);
+    if (required === null) {
+      this.pending = null;
+      return false;
+    }
+    this.pending = { id, value, target: required };
+    return true;
   }
 
   cancel() {
@@ -224,7 +252,11 @@ export class PromptChallenge<T> {
   }
 
   complete(id: string, count: number): T | null {
-    if (!this.pending || this.pending.id !== id || count !== SIX_SEVEN_TARGET)
+    if (
+      !this.pending ||
+      this.pending.id !== id ||
+      count !== this.pending.target
+    )
       return null;
     const value = this.pending.value;
     this.pending = null;

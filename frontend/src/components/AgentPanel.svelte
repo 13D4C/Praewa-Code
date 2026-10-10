@@ -42,7 +42,14 @@
   import AgentRequests from './AgentRequests.svelte';
   import MarkdownPreview from './MarkdownPreview.svelte';
   import SixSevenChallenge from './SixSevenChallenge.svelte';
-  import { PromptChallenge } from '../lib/six-seven';
+  import {
+    PromptChallenge,
+    SIX_SEVEN_TARGET,
+    SIX_SEVEN_MIN_TARGET,
+    SIX_SEVEN_MAX_TARGET,
+    SIX_SEVEN_TARGET_STORAGE,
+    parseSixSevenTarget,
+  } from '../lib/six-seven';
   import {
     agentBackend,
     onAgentEvent,
@@ -106,6 +113,7 @@
   let disposed = false;
   type PendingPrompt = {
     id: string;
+    target: number;
     chatId: string;
     threadId: string;
     key: string;
@@ -115,6 +123,8 @@
   };
   const challengeGate = new PromptChallenge<PendingPrompt>();
   let pendingPrompt = $state<PendingPrompt | null>(null);
+  let challengeTarget = $state(SIX_SEVEN_TARGET);
+  let challengeTargetError = $state('');
   const chat = $derived(chats.find((item) => item.id === selectedId));
   const conversation = $derived(
     chat?.threadId ? conversations[chat.threadId] : undefined,
@@ -275,7 +285,17 @@
   });
   onDestroy(persist);
   onMount(() => {
-    const off = onAgentEvent(applyConversation);
+    try {
+      challengeTarget =
+        parseSixSevenTarget(localStorage.getItem(SIX_SEVEN_TARGET_STORAGE)) ??
+        SIX_SEVEN_TARGET;
+    } catch {}
+    const lastSnapshots = new Map<string, number>();
+    let lastStatusAt = Date.now();
+    const off = onAgentEvent((snapshot) => {
+      lastSnapshots.set(snapshot.thread.id, Date.now());
+      applyConversation(snapshot);
+    });
     let polling = false;
     void tick().then(() => connectAgent());
     const timer = setInterval(async () => {
@@ -286,16 +306,29 @@
       }
       polling = true;
       try {
-        if (visible && chat?.threadId)
+        const interval = window.runtime?.EventsOn ? 5000 : 700;
+        if (
+          visible &&
+          !pendingPrompt &&
+          !managingMode &&
+          !document.hidden &&
+          chat?.threadId &&
+          Date.now() - (lastSnapshots.get(chat.threadId) ?? 0) >= interval
+        ) {
+          lastSnapshots.set(chat.threadId, Date.now());
           applyConversation(await agentBackend.snapshot(chat.threadId));
+        }
       } catch (reason) {
         agentError = reason instanceof Error ? reason.message : String(reason);
       } finally {
         try {
-          const next = await agentBackend.status();
-          if (!disposed) {
-            connection = next;
-            if (!next.connected) retryAt = 0;
+          if (Date.now() - lastStatusAt >= 5000) {
+            lastStatusAt = Date.now();
+            const next = await agentBackend.status();
+            if (!disposed) {
+              connection = next;
+              if (!next.connected) retryAt = 0;
+            }
           }
         } catch {
           if (!disposed) {
@@ -314,9 +347,9 @@
   });
 
   function applyConversation(next: AgentConversation) {
-    if (!next.thread?.id) return;
+    if (disposed || !next.thread?.id) return;
     const old = conversations[next.thread.id];
-    if (!old || next.sequence >= old.sequence)
+    if (!old || next.sequence > old.sequence)
       conversations[next.thread.id] = next;
   }
   function connectAgent(): Promise<boolean> {
@@ -407,6 +440,26 @@
     challengeGate.cancel();
     pendingPrompt = null;
   }
+  function setChallengeTarget(input: HTMLInputElement) {
+    const target = parseSixSevenTarget(input.value);
+    if (target === null) {
+      input.value = String(challengeTarget);
+      challengeTargetError = `ใช้จำนวนเต็ม ${SIX_SEVEN_MIN_TARGET}–${SIX_SEVEN_MAX_TARGET.toLocaleString()} รอบ`;
+      return;
+    }
+    challengeTargetError = '';
+    input.value = String(target);
+    if (target === challengeTarget) return;
+    challengeTarget = target;
+    try {
+      localStorage.setItem(SIX_SEVEN_TARGET_STORAGE, String(target));
+    } catch {}
+    if (pendingPrompt) {
+      const pending = { ...pendingPrompt, id: crypto.randomUUID(), target };
+      challengeGate.begin(pending.id, pending, target);
+      pendingPrompt = pending;
+    }
+  }
   function matchesPrompt(pending: PendingPrompt) {
     return (
       !disposed &&
@@ -436,6 +489,7 @@
       return;
     const pending: PendingPrompt = {
       id: crypto.randomUUID(),
+      target: challengeTarget,
       chatId: chat.id,
       threadId: chat.threadId,
       key: loadedKey,
@@ -443,7 +497,7 @@
       mode: copyMode(mode),
       files: chat.files.map((file) => ({ ...file })),
     };
-    challengeGate.begin(pending.id, pending);
+    challengeGate.begin(pending.id, pending, pending.target);
     pendingPrompt = pending;
     historyVisible = false;
     pickerVisible = false;
@@ -689,6 +743,7 @@
           {@const pending = pendingPrompt}
           {#key pending.id}
             <SixSevenChallenge
+              target={pending.target}
               oncomplete={(count) => completeChallenge(pending.id, count)}
               oncancel={cancelChallenge}
             />
@@ -724,7 +779,10 @@
                 {#if message.role === 'assistant' && message.text}<div
                     class="reply-markdown"
                   >
-                    <MarkdownPreview content={message.text} />
+                    <MarkdownPreview
+                      content={message.text}
+                      streaming={message.status === 'inProgress'}
+                    />
                   </div>{:else}<div class="message-text">
                     {message.text || 'Thinking…'}
                   </div>{/if}
@@ -834,6 +892,47 @@
           {storageError}
         </p>{/if}
       <div class="composer-area" bind:this={contextRoot}>
+        <div
+          class="mb-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted"
+        >
+          <label class="flex items-center gap-2">
+            <span>Six Seven</span>
+            <input
+              type="number"
+              min={SIX_SEVEN_MIN_TARGET}
+              max={SIX_SEVEN_MAX_TARGET}
+              step="1"
+              value={challengeTarget}
+              aria-label="จำนวนรอบ Six Seven"
+              aria-invalid={!!challengeTargetError}
+              class="w-[72px] rounded-md border border-line bg-surface px-2 py-1 font-mono text-accent outline-none focus:border-accent"
+              disabled={sending || loadingChat || !!conversation?.active}
+              onchange={(event) => setChallengeTarget(event.currentTarget)}
+              onkeydown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setChallengeTarget(event.currentTarget);
+                  event.currentTarget.blur();
+                }
+              }}
+            />
+            <span>รอบ</span>
+          </label>
+          <span
+            >{SIX_SEVEN_MIN_TARGET}–{SIX_SEVEN_MAX_TARGET.toLocaleString()} รอบ</span
+          >
+        </div>
+        {#if challengeTargetError}
+          <p class="mb-2 text-[11px] text-red-300" role="alert">
+            {challengeTargetError}
+          </p>
+        {/if}
+        {#if pendingPrompt}
+          <p class="mb-2 text-[11px] text-muted">
+            เปลี่ยนจำนวนแล้วจะเริ่มนับใหม่
+          </p>
+        {/if}
         <fieldset
           class="m-0 min-w-0 border-0 p-0"
           disabled={!!pendingPrompt || sending}
@@ -946,10 +1045,10 @@
           </div>
         </fieldset>
         <div class="composer-hint">
-          {#if pendingPrompt}ทำ Six Seven ครบ 50 ครั้งเพื่อส่งข้อความ{:else}<kbd
+          {#if pendingPrompt}ทำ Six Seven ครบ {pendingPrompt.target} รอบเพื่อส่งข้อความ{:else}<kbd
               >Enter</kbd
             >
-            → Six Seven 50 ครั้ง ·
+            → Six Seven {challengeTarget} รอบ ·
             <kbd>Shift + Enter</kbd> for a new line
           {/if}
         </div>

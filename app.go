@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 
 	"praewa-code/internal/agent"
+	"praewa-code/internal/camera"
 	"praewa-code/internal/ide"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -24,6 +25,7 @@ type App struct {
 	languages *ide.Languages
 	dirty     atomic.Bool
 	agent     *agent.Service
+	camera    *camera.Service
 }
 
 type InitialState struct {
@@ -34,7 +36,7 @@ type InitialState struct {
 
 func NewApp() *App {
 	w := ide.NewWorkspace()
-	return &App{workspace: w, builder: ide.NewBuilder(w), terminals: ide.NewTerminals(), watcher: &ide.Watcher{}, sessions: ide.NewSessionStore(), languages: ide.NewLanguages(w), agent: agent.New(w.Root)}
+	return &App{workspace: w, builder: ide.NewBuilder(w), terminals: ide.NewTerminals(), watcher: &ide.Watcher{}, sessions: ide.NewSessionStore(), languages: ide.NewLanguages(w), agent: agent.New(w.Root), camera: camera.New()}
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -57,6 +59,7 @@ func (a *App) beforeClose(ctx context.Context) bool {
 
 func (a *App) shutdown(context.Context) {
 	a.CameraAccess(false)
+	a.camera.CloseAll()
 	a.builder.Cancel()
 	a.languages.Close()
 	a.terminals.CloseAll()
@@ -64,6 +67,13 @@ func (a *App) shutdown(context.Context) {
 	a.agent.Close()
 }
 func (a *App) SetDirty(dirty bool) { a.dirty.Store(dirty) }
+
+func (a *App) CameraDevices() camera.Devices                { return a.camera.Devices() }
+func (a *App) CameraOpen(id, device string) (string, error) { return a.camera.Open(id, device) }
+func (a *App) CameraFrame(id string, after uint64) (camera.Frame, error) {
+	return a.camera.Read(id, after)
+}
+func (a *App) CameraClose(id string) { a.camera.Close(id) }
 
 func (a *App) InitialState() (*InitialState, error) {
 	session := a.sessions.Load()

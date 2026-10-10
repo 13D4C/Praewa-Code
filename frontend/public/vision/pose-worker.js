@@ -7,10 +7,20 @@ self.onmessage = async ({ data }) => {
   try {
     if (data.type === 'init' && !loading) {
       loading = true;
+      const canvas = new OffscreenCanvas(640, 480);
+      if (!canvas.getContext('webgl2')) {
+        self.postMessage({
+          type: 'error',
+          unsupported: true,
+          message: 'Worker WebGL is unavailable',
+        });
+        return;
+      }
       const files = await PraewaVision.FilesetResolver.forVisionTasks(
         data.wasm,
       );
       detector = await PraewaVision.PoseLandmarker.createFromOptions(files, {
+        canvas,
         baseOptions: { modelAssetPath: data.model, delegate: 'CPU' },
         runningMode: 'VIDEO',
         numPoses: 1,

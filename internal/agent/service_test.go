@@ -448,3 +448,55 @@ func TestLiveAgentModes(t *testing.T) {
 		t.Logf("%s: %s", entry.Name, reply)
 	}
 }
+
+func TestDeltaBurstIsBatchedAndCompletionFlushesImmediately(t *testing.T) {
+	root := t.TempDir()
+	service := New(func() string { return root })
+	t.Cleanup(service.Close)
+	service.chats["stream"] = &Conversation{Thread: Thread{ID: "stream", Cwd: root}, Active: true, CanStop: true}
+	var mu sync.Mutex
+	var events []Conversation
+	service.OnEvent = func(event Event) {
+		mu.Lock()
+		events = append(events, *event.Snapshot)
+		mu.Unlock()
+	}
+	for range 500 {
+		service.handle(envelope{Method: "item/agentMessage/delta", Params: json.RawMessage(`{"threadId":"stream","turnId":"turn","itemId":"reply","delta":"x"}`)})
+	}
+	service.handle(envelope{Method: "turn/completed", Params: json.RawMessage(`{"threadId":"stream","turn":{"id":"turn","status":"completed"}}`)})
+	mu.Lock()
+	count := len(events)
+	last := events[count-1]
+	mu.Unlock()
+	if count > 4 || last.Active || len(last.Messages) != 1 || last.Messages[0].Text != strings.Repeat("x", 500) {
+		t.Fatalf("burst was not batched or final text was lost: events=%d snapshot=%+v", count, last)
+	}
+	time.Sleep(2 * streamEventInterval)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(events) != count {
+		t.Fatal("a cancelled delta timer emitted after completion")
+	}
+}
+
+func TestTrailingDeltaIsEmittedWhenTheStreamPauses(t *testing.T) {
+	root := t.TempDir()
+	service := New(func() string { return root })
+	t.Cleanup(service.Close)
+	service.chats["stream"] = &Conversation{Thread: Thread{ID: "stream", Cwd: root}}
+	events := make(chan Conversation, 4)
+	service.OnEvent = func(event Event) { events <- *event.Snapshot }
+	for range 2 {
+		service.handle(envelope{Method: "item/agentMessage/delta", Params: json.RawMessage(`{"threadId":"stream","turnId":"turn","itemId":"reply","delta":"x"}`)})
+	}
+	<-events
+	select {
+	case snapshot := <-events:
+		if snapshot.Messages[0].Text != "xx" {
+			t.Fatal("the trailing delta was lost")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("a paused stream never flushed its pending delta")
+	}
+}

@@ -128,7 +128,13 @@ window.go = {
     },
   },
 };
-window.runtime = { EventsOn: () => () => {} };
+const agentEvents = new Set();
+window.runtime = {
+  EventsOn: (name, callback) => {
+    if (name === 'agent:event') agentEvents.add(callback);
+    return () => agentEvents.delete(callback);
+  },
+};
 
 async function settle() {
   await tick();
@@ -311,7 +317,8 @@ test('challenge displays only the arm skeleton and keeps wrist tracking when elb
   const challenge = mount(Challenge, {
     target: document.body,
     props: {
-      oncomplete: () => assert.fail('A stationary pose cannot complete the challenge'),
+      oncomplete: () =>
+        assert.fail('A stationary pose cannot complete the challenge'),
       oncancel: () => {},
     },
   });
@@ -340,7 +347,228 @@ test('challenge displays only the arm skeleton and keeps wrist tracking when elb
   }
 });
 
+test('the adjustable target persists, restarts an active challenge and controls every actual send', async () => {
+  localStorage.clear();
+  sends = [];
+  reads = 0;
+  rejectSend = false;
+  const props = {
+    workspace: '/adjustable-fixture',
+    workspaceName: 'Adjustable Fixture',
+    files: [{ name: 'main.go', path: '/adjustable-fixture/main.go' }],
+    activeFile: { name: 'main.go', path: '/adjustable-fixture/main.go' },
+    visible: true,
+    onclose: () => {},
+    onreadfile: async () => {
+      reads++;
+      return 'package main';
+    },
+  };
+  const progress = () => document.querySelector('[role="progressbar"]');
+  function setTarget(value) {
+    const field = document.querySelector('[aria-label="จำนวนรอบ Six Seven"]');
+    field.value = String(value);
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+    return field;
+  }
+  let panel = mount(Panel, { target: document.body, props });
+  try {
+    await settle();
+    assert.equal(
+      document.querySelector('[aria-label="จำนวนรอบ Six Seven"]').value,
+      '50',
+    );
+    setTarget(3);
+    await settle();
+    assert.equal(localStorage.getItem('praewa-six-seven-target'), '3');
+    click('Attach active file main.go');
+    input('Custom target');
+    await settle();
+    click('Send message to agent');
+    await settle();
+    assert.equal(progress().getAttribute('aria-valuemax'), '3');
+    assert.match(document.body.textContent, /ครบ 3 ส่งข้อความอัตโนมัติ/);
+    const three = exercise();
+    three(2);
+    await settle();
+    assert.equal(progress().getAttribute('aria-valuenow'), '2');
+    assert.equal(sends.length, 0);
+    assert.equal(reads, 0);
+    three(1);
+    await settle();
+    assert.equal(sends.length, 1);
+    assert.equal(reads, 1);
+
+    input('Change the target during the challenge');
+    await settle();
+    click('Send message to agent');
+    await settle();
+    const original = exercise();
+    original(1);
+    await settle();
+    const originalFrame = globalThis.poseFrame;
+    const starts = cameraStarts;
+    setTarget(3);
+    await settle();
+    assert.equal(cameraStarts, starts);
+    assert.equal(progress().getAttribute('aria-valuenow'), '1');
+    setTarget(5);
+    await settle();
+    assert.equal(cameraStarts, starts + 1);
+    assert.equal(progress().getAttribute('aria-valuenow'), '0');
+    assert.equal(progress().getAttribute('aria-valuemax'), '5');
+    originalFrame(pose(0.4, 0.6), 999999);
+    await settle();
+    assert.equal(progress().getAttribute('aria-valuenow'), '0');
+    assert.equal(sends.length, 1);
+    const five = exercise();
+    five(4);
+    await settle();
+    assert.equal(sends.length, 1);
+    assert.equal(reads, 1);
+    five(1);
+    await settle();
+    assert.equal(sends.length, 2);
+
+    for (const value of ['', 0, -1, 1.5, 1001]) {
+      const field = setTarget(value);
+      await settle();
+      assert.equal(field.value, '5');
+      assert.equal(field.getAttribute('aria-invalid'), 'true');
+      assert.match(
+        document.querySelector('[role="alert"]').textContent,
+        /ใช้จำนวนเต็ม/,
+      );
+      assert.equal(localStorage.getItem('praewa-six-seven-target'), '5');
+    }
+    await unmount(panel);
+    panel = mount(Panel, {
+      target: document.body,
+      props: { ...props, workspace: '/another-workspace' },
+    });
+    await settle();
+    assert.equal(
+      document.querySelector('[aria-label="จำนวนรอบ Six Seven"]').value,
+      '5',
+    );
+    input('One full repetition');
+    await settle();
+    click('Send message to agent');
+    await settle();
+    assert.equal(progress().getAttribute('aria-valuemax'), '5');
+    exercise()(4);
+    await settle();
+    assert.equal(progress().getAttribute('aria-valuenow'), '4');
+    setTarget(1);
+    await settle();
+    assert.equal(progress().getAttribute('aria-valuemax'), '1');
+    assert.equal(progress().getAttribute('aria-valuenow'), '0');
+    assert.equal(sends.length, 2);
+    exercise()(1);
+    await settle();
+    assert.equal(sends.length, 3);
+  } finally {
+    await unmount(panel);
+  }
+});
+
 test.after(async () => {
   await rm(directory, { recursive: true, force: true });
   dom.window.close();
+});
+
+test('streaming updates use a bounded DOM, ignore repeated snapshots and render Markdown when finished', async () => {
+  const workspace = '/streaming-performance';
+  const snapshot = (sequence, text, status = 'inProgress') => ({
+    thread: { id: 'stream-performance', name: 'Streaming' },
+    sequence,
+    requests: [],
+    active: status === 'inProgress',
+    canStop: status === 'inProgress',
+    messages: [
+      {
+        id: 'reply',
+        role: 'assistant',
+        turnId: 'turn',
+        text,
+        status,
+        createdAt: 0,
+      },
+    ],
+  });
+  localStorage.setItem(
+    'praewa-agent-drafts:' + workspace,
+    JSON.stringify({
+      selectedId: 'saved',
+      chats: [
+        {
+          id: 'saved',
+          title: 'Streaming',
+          messages: [],
+          composer: '',
+          files: [],
+          modeId: 'khaow-code',
+          threadId: 'stream-performance',
+        },
+      ],
+    }),
+  );
+  const app = window.go.main.App;
+  const oldLoad = app.AgentLoad;
+  app.AgentLoad = async () => snapshot(1, 'First update');
+  const panel = mount(Panel, {
+    target: document.body,
+    props: {
+      workspace,
+      workspaceName: 'Performance',
+      files: [],
+      activeFile: null,
+      visible: true,
+      onclose: () => {},
+      onreadfile: async () => '',
+    },
+  });
+  const emit = (value) => {
+    for (const callback of agentEvents)
+      callback({ threadId: value.thread.id, snapshot: value });
+  };
+  try {
+    await settle();
+    const reply = () => document.querySelector('[aria-label="Agent reply"]');
+    assert.match(reply().textContent, /First update/);
+    emit(snapshot(1, 'Repeated snapshot must be ignored'));
+    emit(snapshot(0, 'Old snapshot must be ignored'));
+    await settle();
+    assert.match(reply().textContent, /First update/);
+    const text = '**Streaming**\n\n' + '- Item\n'.repeat(3000);
+    emit(snapshot(2, text));
+    await settle();
+    assert.ok(
+      reply().querySelectorAll('*').length < 20,
+      'Streaming should not rebuild thousands of Markdown nodes',
+    );
+    assert.match(reply().textContent, /\*\*Streaming\*\*/);
+    emit(
+      snapshot(
+        3,
+        '**Completed**<script>window.untrusted = true</script>',
+        'completed',
+      ),
+    );
+    await settle();
+    assert.equal(reply().querySelector('strong').textContent, 'Agent');
+    assert.equal(
+      reply().querySelector('.markdown-preview strong').textContent,
+      'Completed',
+    );
+    assert.equal(reply().querySelector('script'), null);
+    assert.equal(window.untrusted, undefined);
+    assert.equal(
+      document.querySelector('[aria-label="Stop agent response"]'),
+      null,
+    );
+  } finally {
+    await unmount(panel);
+    app.AgentLoad = oldLoad;
+  }
 });

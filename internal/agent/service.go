@@ -14,6 +14,7 @@ import (
 
 const modelID = "gpt-6.1-sol"
 const reasoningEffort = "xhigh"
+const streamEventInterval = 120 * time.Millisecond
 
 type Service struct {
 	connectMu  sync.Mutex
@@ -543,17 +544,23 @@ func (s *Service) handle(message envelope) {
 		s.mu.Unlock()
 		return
 	}
-	if message.Method == "item/agentMessage/delta" && !firstDelta && time.Since(s.lastEvent[params.ThreadID]) < 50*time.Millisecond {
+	if message.Method == "item/agentMessage/delta" && !firstDelta && time.Since(s.lastEvent[params.ThreadID]) < streamEventInterval {
 		id := params.ThreadID
 		if s.deltaTimer[id] == nil {
-			s.deltaTimer[id] = time.AfterFunc(50*time.Millisecond, func() {
+			var timer *time.Timer
+			timer = time.AfterFunc(streamEventInterval-time.Since(s.lastEvent[id]), func() {
 				s.mu.Lock()
+				if s.deltaTimer[id] != timer {
+					s.mu.Unlock()
+					return
+				}
 				delete(s.deltaTimer, id)
 				s.lastEvent[id] = time.Now()
 				snapshot := copyConversation(s.chats[id])
 				s.mu.Unlock()
 				s.emit(snapshot)
 			})
+			s.deltaTimer[id] = timer
 		}
 		s.mu.Unlock()
 		return

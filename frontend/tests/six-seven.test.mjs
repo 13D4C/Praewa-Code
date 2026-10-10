@@ -5,6 +5,7 @@ import {
   SixSevenCounter,
   PromptChallenge,
   SIX_SEVEN_TARGET,
+  parseSixSevenTarget,
 } from '../src/lib/six-seven.ts';
 import {
   CameraLease,
@@ -70,6 +71,60 @@ test('new prompts, cancellation and stale completions cannot reuse a completed c
   assert.equal(run.cycle().count, 1);
   counter.reset();
   assert.equal(counter.update(pose(0.4, 0.6), 1).count, 0);
+});
+
+test('custom targets below and above 50 use the same counter and prompt completion threshold', () => {
+  for (const target of [1, 5, 73]) {
+    const counter = new SixSevenCounter(target);
+    const gate = new PromptChallenge();
+    const run = exercise(counter);
+    gate.begin('custom', 'prompt', target);
+    run.hold(pose(0.4, 0.6));
+    for (let count = 1; count < target; count++) {
+      assert.equal(run.cycle().count, count);
+      assert.equal(gate.complete('custom', count), null);
+    }
+    assert.equal(run.cycle().count, target);
+    assert.equal(gate.complete('custom', target), 'prompt');
+    assert.equal(gate.complete('custom', target), null);
+    assert.equal(run.cycle().count, target);
+    counter.reset();
+    run.hold(pose(0.4, 0.6));
+    assert.equal(run.cycle().count, 1);
+  }
+});
+
+test('targets require whole numbers from 1 to 1000 and invalid targets cannot approve a prompt', () => {
+  for (const value of [
+    null,
+    '',
+    ' ',
+    0,
+    -1,
+    1.5,
+    1001,
+    Infinity,
+    NaN,
+    true,
+    'invalid',
+  ]) {
+    assert.equal(parseSixSevenTarget(value), null, String(value));
+    const gate = new PromptChallenge();
+    gate.begin('old', 'old prompt');
+    assert.equal(gate.begin('invalid', 'new prompt', value), false);
+    assert.equal(gate.complete('invalid', 0), null);
+    assert.equal(gate.complete('old', 50), null);
+  }
+  assert.equal(parseSixSevenTarget('5'), 5);
+  assert.equal(parseSixSevenTarget(undefined), null);
+  assert.equal(parseSixSevenTarget(1000), 1000);
+  const gate = new PromptChallenge();
+  gate.begin('old', 'old prompt', 50);
+  gate.begin('new', 'new prompt', 5);
+  assert.equal(gate.complete('old', 50), null);
+  assert.equal(gate.complete('new', 50), null);
+  assert.equal(gate.complete('new', 4), null);
+  assert.equal(gate.complete('new', 5), 'new prompt');
 });
 
 test('stationary hands, camera jitter, body bouncing and one moving arm do not count', () => {
@@ -157,7 +212,7 @@ test('short gestures count even when the hands never cross the same height', () 
 });
 
 test('natural continuous movement counts consistently at different frame rates and distances', () => {
-  for (const fps of [8, 12, 20, 30]) {
+  for (const fps of [7, 8, 12, 20, 30]) {
     for (const period of [600, 1000, 1800]) {
       for (const scale of [0.7, 1, 1.8]) {
         const counter = new SixSevenCounter();

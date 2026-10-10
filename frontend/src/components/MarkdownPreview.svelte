@@ -2,12 +2,15 @@
   import { marked } from 'marked';
   import DOMPurify from 'dompurify';
   import { openLink } from '../lib/bridge';
-  let { content }: { content: string } = $props();
+  let { content, streaming = false }: { content: string; streaming?: boolean } =
+    $props();
   const html = $derived(
-    DOMPurify.sanitize(marked.parse(content, { async: false }), {
-      FORBID_TAGS: ['iframe', 'style'],
-      FORBID_ATTR: ['style'],
-    }),
+    streaming
+      ? ''
+      : DOMPurify.sanitize(marked.parse(content, { async: false }), {
+          FORBID_TAGS: ['iframe', 'style'],
+          FORBID_ATTR: ['style'],
+        }),
   );
   function handleLinks(node: HTMLDivElement) {
     const handler = (event: MouseEvent) => {
@@ -26,7 +29,10 @@
   }
 </script>
 
-<div class="markdown-preview" role="document" use:handleLinks>{@html html}</div>
+<div class="markdown-preview" role="document" use:handleLinks>
+  {#if streaming}<div class="whitespace-pre-wrap wrap-anywhere">{content}</div>
+  {:else}{@html html}{/if}
+</div>
 
 <style lang="postcss">
   @reference '../styles.css';

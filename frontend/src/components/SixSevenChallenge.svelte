@@ -4,6 +4,7 @@
   import {
     SixSevenCounter,
     SIX_SEVEN_TARGET,
+    parseSixSevenTarget,
     type TrackedArm,
   } from '../lib/six-seven';
   import {
@@ -13,13 +14,18 @@
   } from '../lib/gesture-camera';
 
   let {
+    target = SIX_SEVEN_TARGET,
     oncomplete,
     oncancel,
   }: {
+    target?: number;
     oncomplete: (count: number) => void;
     oncancel: () => void;
   } = $props();
+  const goal = $derived(parseSixSevenTarget(target) ?? SIX_SEVEN_TARGET);
   let video: HTMLVideoElement;
+  let image: HTMLImageElement;
+  let nativePreview = $state(false);
   let count = $state(0);
   let tracking = $state(false);
   let halfway = $state(false);
@@ -39,7 +45,8 @@
   function start() {
     session?.stop();
     const token = ++attempt;
-    const counter = new SixSevenCounter();
+    const required = goal;
+    const counter = new SixSevenCounter(required);
     count = 0;
     error = '';
     ready = false;
@@ -59,7 +66,7 @@
         halfway = progress.halfway;
         arms = progress.arms;
         direction = progress.direction;
-        if (count === SIX_SEVEN_TARGET) {
+        if (count === required) {
           ++attempt;
           session?.stop();
           oncomplete(count);
@@ -78,6 +85,10 @@
         }
       },
       {
+        image,
+        onnative: (enabled) => {
+          if (!disposed && token === attempt) nativePreview = enabled;
+        },
         deviceId: selectedWebcam,
         ondevices: (devices, selected) => {
           if (disposed || token !== attempt) return;
@@ -147,12 +158,19 @@
   >
     <video
       bind:this={video}
+      hidden={nativePreview}
       autoplay
       muted
       playsinline
       class="h-full w-full -scale-x-100 object-cover"
       aria-label="ภาพกล้องสำหรับนับท่า Six Seven"
     ></video>
+    <img
+      bind:this={image}
+      hidden={!nativePreview}
+      alt="ภาพ webcam สำหรับนับท่า Six Seven"
+      class="h-full w-full -scale-x-100 object-cover"
+    />
     <svg
       class="pointer-events-none absolute inset-0 h-full w-full"
       viewBox="0 0 100 100"
@@ -231,9 +249,9 @@
     {/if}
     <div
       class="absolute bottom-2 right-2 rounded-lg bg-black/80 px-3 py-1 font-mono text-3xl font-bold text-accent"
-      aria-label={`${count} of ${SIX_SEVEN_TARGET} repetitions`}
+      aria-label={`${count} of ${goal} repetitions`}
     >
-      {count}<span class="ml-1 text-sm text-muted">/ {SIX_SEVEN_TARGET}</span>
+      {count}<span class="ml-1 text-sm text-muted">/ {goal}</span>
     </div>
   </div>
   <div class="space-y-2 px-3 pb-3 pt-2">
@@ -277,11 +295,11 @@
       aria-label="Six Seven progress"
       aria-valuenow={count}
       aria-valuemin={0}
-      aria-valuemax={SIX_SEVEN_TARGET}
+      aria-valuemax={goal}
     >
       <div
         class="h-full bg-accent transition-[width] duration-150"
-        style:width={`${(count / SIX_SEVEN_TARGET) * 100}%`}
+        style:width={`${(count / goal) * 100}%`}
       ></div>
     </div>
     {#if error}
@@ -302,7 +320,7 @@
       </p>
     {/if}
     <p class="m-0 text-[11px] leading-relaxed text-muted">
-      สลับซ้าย–ขวาแล้วกลับ = 1 ครั้ง · ครบ 50 ส่งข้อความอัตโนมัติ<br
+      สลับซ้าย–ขวาแล้วกลับ = 1 ครั้ง · ครบ {goal} ส่งข้อความอัตโนมัติ<br
       />ภาพกล้องประมวลผลในเครื่อง และปิดเมื่อจบหรือยกเลิก
     </p>
   </div>

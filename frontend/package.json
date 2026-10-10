@@ -9,7 +9,7 @@
     "prebuild": "node scripts/vision-assets.mjs",
     "build": "vite build",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "node --experimental-strip-types tests/six-seven.test.mjs && node tests/agent-challenge.test.mjs",
+    "test": "node --experimental-strip-types tests/six-seven.test.mjs && node tests/camera-performance.test.mjs && node tests/agent-challenge.test.mjs",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
